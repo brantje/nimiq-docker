@@ -1,22 +1,35 @@
 FROM node:10-stretch
 
-# Get repo key and install it
-RUN wget -qO - https://www.nimiq.com/nimiq-signing-key.pub | apt-key add -
-
-# Install the repo
-RUN echo "deb [arch=amd64] http://repo.nimiq.com/deb stable main" > /etc/apt/sources.list.d/nimiq.list
+# Build from master branch by default.
+# One can override this using --build-arg when building the docker
+# image from this file.
+ARG BRANCH=master
 
 # Install dependencies
 RUN apt-get update && apt-get -y upgrade
-RUN apt-get install -y nimiq
+RUN apt-get install -y build-essential git-core
 
 # We're going to execute nimiq in the context of its own user, what else?
 ENV USER=nimiq
+RUN useradd -m ${USER}
 
 # Create a working directory for the nimiq process
 ENV DATA_PATH=/nimiq
 RUN mkdir ${DATA_PATH} && chown ${USER}:root ${DATA_PATH}
 WORKDIR ${DATA_PATH}
+
+# Build environment as non-root user
+USER ${USER}
+
+# Clone
+RUN git clone --branch ${BRANCH} https://github.com/nimiq/core-js.git core
+
+# Build
+RUN cd core && yarn
+
+# Remove build tools
+USER root
+RUN apt-get remove -y build-essential
 
 # Execute client as non-root user
 USER ${USER}
@@ -30,4 +43,4 @@ USER ${USER}
 #   current working directory)
 #     docker run nimiq/nodejs-client -v $(pwd)/nimiq.conf:/etc/nimiq/nimiq.conf --config=/etc/nimiq.conf
 # (- of course, you can combine and modify these options suitable to your needs)
-ENTRYPOINT [ "/usr/bin/nimiq" ]
+ENTRYPOINT [ "./core/clients/nodejs/nimiq" ]
